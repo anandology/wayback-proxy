@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 type WaybackResponse struct {
@@ -27,6 +28,8 @@ type WaybackResponseEntry struct {
 	URL       string `json:"url"`
 }
 
+// GetWaybackURL queries the wayback API to find the URL to get a snapshot
+// of the webpage of the specified requestURL, closest to the specified timestamp.
 func GetWaybackURL(requestURL string, timestamp string) (string, error) {
 	apiURL := url.URL{
 		Scheme: "https",
@@ -61,21 +64,26 @@ func GetWaybackURL(requestURL string, timestamp string) (string, error) {
 	if out.ArchivedSnapshots.Closest == nil {
 		return "", nil
 	}
-
-	log.Println("JSON", out.ArchivedSnapshots.Closest)
-
+	match := out.ArchivedSnapshots.Closest
+	log.Printf(
+		"MATCH timestamp=%s status=%s URL=%s",
+		match.Timestamp, match.Status, match.URL)
 	wbURL := fmt.Sprintf(
 		"https://web.archive.org/web/%sid_/%s",
-		out.ArchivedSnapshots.Closest.Timestamp,
+		match.Timestamp,
 		out.URL)
 	return wbURL, nil
 }
 
 func main() {
+	waybackTimestamp := os.Getenv("WAYBACK_TIMESTAMP")
+	if waybackTimestamp == "" {
+		waybackTimestamp = "2020"
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		log.Println("GET", req.URL.String())
-		url, err := GetWaybackURL(req.URL.String(), "2015")
+		url, err := GetWaybackURL(req.URL.String(), waybackTimestamp)
 
 		if err != nil {
 			internalError(w, err)
@@ -101,6 +109,7 @@ func main() {
 		io.Copy(w, read)
 	})
 
+	fmt.Println("Starting wayback-proxy with timestamp:", waybackTimestamp)
 	fmt.Println("http://localhost:8080/")
 	http.ListenAndServe(":8080", nil)
 }
